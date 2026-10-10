@@ -1,0 +1,27 @@
+# Binaries
+opensnitch-zenity
+opensnitch-zenity-*
+*.exe
+*.dll
+
+# Go test output
+*.out
+coverage.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage/

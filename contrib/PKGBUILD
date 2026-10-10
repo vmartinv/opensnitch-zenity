@@ -1,0 +1,34 @@
+# Maintainer: vmartinv <https://github.com/vmartinv>
+pkgname=opensnitch-zenity
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Lightweight zenity prompt UI for the OpenSnitch daemon (unofficial)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/vmartinv/opensnitch-zenity"
+license=('GPL-3.0-or-later')
+depends=('opensnitch' 'zenity')
+makedepends=('go')
+optdepends=('libnotify: notify_on_default desktop notifications')
+source=("$pkgname::git+$url#tag=v$pkgver")
+sha256sums=('SKIP')
+
+build() {
+    cd "$pkgname"
+    export CGO_ENABLED=0
+    export GOFLAGS="-trimpath -mod=readonly -modcacherw"
+    go build -o opensnitch-zenity ./cmd/opensnitch-zenity
+}
+
+check() {
+    cd "$pkgname"
+    go test ./...
+}
+
+package() {
+    cd "$pkgname"
+    install -Dm755 opensnitch-zenity "$pkgdir/usr/bin/opensnitch-zenity"
+    install -Dm644 contrib/systemd/opensnitch-zenity.service \
+        "$pkgdir/usr/lib/systemd/user/opensnitch-zenity.service"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
