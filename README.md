@@ -22,7 +22,16 @@ For each new connection the daemon asks about:
 | Button | Result |
 |---|---|
 | **Allow once** / **Deny once** | Applies to this connection only. Closing the window = Deny once. |
-| **Allow always** / **Deny always** | A second dialog asks what the rule covers: *program to any host*, *program to this host only*, *any program to this host*, or *Just once*. The daemon saves the rule to `/etc/opensnitchd/rules/`. |
+| **Allow always** / **Deny always** | A second dialog asks what the rule covers (see below). The daemon saves the rule to `/etc/opensnitchd/rules/`. |
+
+Rule scopes offered after "always", most specific first:
+
+| Choice | Rule matches |
+|---|---|
+| *curl to example.com only* | this program connecting to this host |
+| *curl to any host* | this program, any destination |
+| *Any program to example.com* | any program connecting to this host |
+| *Just once* | apply the chosen action to this connection only |
 
 Each dialog waits `prompt_timeout` (default 30 s). If nobody answers the first
 dialog, `default_action` is applied **once**; if nobody answers the scope
@@ -42,17 +51,19 @@ repeated within 2 s reuses the previous answer instead of prompting again.
 
 ## Install
 
+On Arch Linux, build and install a package so pacman tracks the files:
+
 ```sh
-sudo pacman -S --needed opensnitch zenity go
+sudo pacman -S --needed opensnitch zenity go base-devel
 git clone https://github.com/vmartinv/opensnitch-zenity
-cd opensnitch-zenity
-make build
-sudo make install          # /usr/bin + systemd user unit
+cd opensnitch-zenity/contrib
+makepkg -si
 systemctl --user enable --now opensnitch-zenity.service
 sudo systemctl enable --now opensnitchd
 ```
 
-Or build a package with `contrib/PKGBUILD` (`cd contrib && makepkg -si`).
+Elsewhere, `make build && sudo make install` copies the binary to `/usr/bin`
+and the unit to `/usr/lib/systemd/user`.
 
 Do not run the stock `opensnitch-ui` at the same time: only one UI can listen
 on the socket. opensnitch-zenity refuses to start if another UI is already
@@ -79,9 +90,10 @@ Logs go to stderr: `journalctl --user -u opensnitch-zenity -f`.
 
 ## Things to know
 
-- **Every user's connections are prompted in your session.** opensnitchd is
-  system-wide; prompts include other users' processes (the dialog shows the
-  user) and system services.
+- **Every user's connections prompt in your session.** opensnitchd is
+  system-wide, so other users, root and service accounts (Docker,
+  NetworkManager, ...) ask you too; the dialog shows which user. Use rules
+  (below) to decide for them in advance.
 - **Your own tools prompt too.** Allow your terminal tools, package manager and
   browser early, or the dialogs will keep coming.
 - **Socket security.** The socket is created mode 0600 in `/tmp`; the daemon
@@ -90,6 +102,40 @@ Logs go to stderr: `journalctl --user -u opensnitch-zenity -f`.
   `/run/user/$UID` in both configs if that matters on your machine.
 - **Window rules.** zenity dialogs are normal windows. On Hyprland they float
   and center by default; otherwise match the window title `OpenSnitch`.
+
+## Writing rules by hand
+
+The dialog only creates the common rule shapes. Anything else is a JSON file
+in `/etc/opensnitchd/rules/`; the daemon picks up changes immediately. A rule
+with several conditions uses a `list` operator, and all conditions must match:
+
+```json
+{
+  "name": "allow-curl-started-by-myapp",
+  "enabled": true,
+  "precedence": false,
+  "action": "allow",
+  "duration": "always",
+  "operator": {
+    "type": "list", "operand": "list", "data": "", "sensitive": false,
+    "list": [
+      {"type": "simple", "operand": "process.path", "data": "/usr/bin/curl", "sensitive": false},
+      {"type": "simple", "operand": "process.parent.path", "data": "/usr/bin/myapp", "sensitive": false}
+    ]
+  }
+}
+```
+
+Useful operands: `process.path`, `process.parent.path` (matches any
+ancestor), `process.command`, `user.id`, `dest.host`, `dest.ip`,
+`dest.network`, `dest.port`, `protocol`. Types: `simple`, `regexp`,
+`network`, `list`.
+
+When several rules match, the daemon checks them in name order and a
+`deny`/`reject` rule wins over `allow` rules, unless an `allow` rule that
+comes first has `"precedence": true`. For example, a `deny` rule on
+`user.id` blocks everything that user does, except programs whose `allow`
+rules have precedence.
 
 ## Development
 

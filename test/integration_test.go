@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -71,7 +72,7 @@ func curl() *pb.Connection {
 	return &pb.Connection{
 		Protocol: "tcp", SrcIp: "192.168.1.10", SrcPort: 51000,
 		DstIp: "93.184.216.34", DstHost: "example.com", DstPort: 443,
-		UserId: 1000, ProcessId: 4242, ProcessPath: "/usr/bin/curl",
+		UserId: uint32(os.Getuid()), ProcessId: 4242, ProcessPath: "/usr/bin/curl",
 		ProcessArgs: []string{"curl", "https://example.com"},
 	}
 }

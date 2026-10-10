@@ -70,8 +70,8 @@ func TestScopeLabelsAreDistinctAndClean(t *testing.T) {
 		}
 		seen[o.label] = true
 	}
-	if !strings.Contains(opts[2].label, "93.184.216.34") {
-		t.Errorf("host label should fall back to IP: %q", opts[2].label)
+	if l := labelFor(opts, rules.ScopeHost); !strings.Contains(l, "93.184.216.34") {
+		t.Errorf("host label should fall back to IP: %q", l)
 	}
 }
 
@@ -83,8 +83,8 @@ func fakeZenity(t *testing.T, answers ...string) (path, logFile string) {
 	var script strings.Builder
 	script.WriteString("#!/bin/sh\n")
 	counter := filepath.Join(dir, "count")
-	fmt.Fprintf(&script, "printf '%%s\\n' \"$*\" >> %s\n", logFile)
-	fmt.Fprintf(&script, "echo >> %s; n=$(wc -l < %s)\n", counter, counter)
+	fmt.Fprintf(&script, "printf '%%s\\n' \"$*\" >> '%s'\n", logFile)
+	fmt.Fprintf(&script, "echo >> '%s'; n=$(wc -l < '%s')\n", counter, counter)
 	for i, a := range answers {
 		fmt.Fprintf(&script, "if [ \"$n\" = %d ]; then %s; fi\n", i+1, a)
 	}
@@ -104,6 +104,15 @@ const (
 
 func press(label string) string { return fmt.Sprintf("echo '%s'; exit 1", label) }
 
+func labelFor(opts []scopeOption, s rules.Scope) string {
+	for _, o := range opts {
+		if o.scope == s {
+			return o.label
+		}
+	}
+	return ""
+}
+
 func TestPrompt(t *testing.T) {
 	opts := scopeOptions(conn())
 	tests := []struct {
@@ -114,9 +123,9 @@ func TestPrompt(t *testing.T) {
 	}{
 		{"allow once", []string{pressOK}, Choice{"allow", "once", rules.ScopeProgram}, 1},
 		{"deny once", []string{pressCancel}, Choice{"deny", "once", rules.ScopeProgram}, 1},
-		{"allow always, any host", []string{press(btnAllowAlways), pressOK}, Choice{"allow", "always", rules.ScopeProgram}, 2},
-		{"allow always, this host", []string{press(btnAllowAlways), press(opts[1].label)}, Choice{"allow", "always", rules.ScopeProgramHost}, 2},
-		{"deny always, any program", []string{press(btnDenyAlways), press(opts[2].label)}, Choice{"deny", "always", rules.ScopeHost}, 2},
+		{"allow always, any host", []string{press(btnAllowAlways), press(labelFor(opts, rules.ScopeProgram))}, Choice{"allow", "always", rules.ScopeProgram}, 2},
+		{"allow always, this host", []string{press(btnAllowAlways), press(labelFor(opts, rules.ScopeProgramHost))}, Choice{"allow", "always", rules.ScopeProgramHost}, 2},
+		{"deny always, any program (OK button)", []string{press(btnDenyAlways), pressOK}, Choice{"deny", "always", rules.ScopeHost}, 2},
 		{"always then just once", []string{press(btnDenyAlways), pressCancel}, Choice{"deny", "once", rules.ScopeProgram}, 2},
 		{"always then scope timeout", []string{press(btnAllowAlways), timeout}, Choice{"allow", "once", rules.ScopeProgram}, 2},
 	}

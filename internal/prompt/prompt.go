@@ -152,16 +152,23 @@ func scopeOptions(conn *pb.Connection) []scopeOption {
 	if dest == "" {
 		dest = clean(conn.DstIp)
 	}
+	// Most specific first; this is the order the user sees.
 	return []scopeOption{
-		{rules.ScopeProgram, prog + " to any host"},
 		{rules.ScopeProgramHost, prog + " to " + dest + " only"},
+		{rules.ScopeProgram, prog + " to any host"},
 		{rules.ScopeHost, "Any program to " + dest},
 	}
 }
 
 func scopeArgs(conn *pb.Connection, action string, opts []scopeOption, timeout time.Duration) dialog {
 	text := fmt.Sprintf("<b>%s always</b> for which connections?\n\n%s", capitalize(action), Text(conn))
-	return newDialog(text, timeout, opts[0].label, btnJustOnce, opts[2].label, opts[1].label)
+	// Stacked zenity buttons show the extras reversed, then OK, then Cancel.
+	last := len(opts) - 1
+	extra := make([]string, 0, last)
+	for i := last - 1; i >= 0; i-- {
+		extra = append(extra, opts[i].label)
+	}
+	return newDialog(text, timeout, opts[last].label, btnJustOnce, extra...)
 }
 
 // Text renders the connection as Pango markup; every field is
