@@ -11,7 +11,7 @@
       packages = forAll (pkgs: rec {
         opensnitch-zenity = pkgs.buildGoModule {
           pname = "opensnitch-zenity";
-          version = "0.2.0";
+          version = "1.0.0";
           src = self;
           vendorHash = "sha256-0UX4f5GZK2Re53ooF9k/gyLxmr6vHfuXAAADmAlYRcc=";
           subPackages = [ "cmd/opensnitch-zenity" ];
