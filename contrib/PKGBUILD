@@ -9,23 +9,26 @@ license=('GPL-3.0-or-later')
 depends=('opensnitch' 'zenity')
 makedepends=('go')
 optdepends=('libnotify: notify_on_default desktop notifications')
-source=("$pkgname::git+$url#tag=v$pkgver")
-sha256sums=('SKIP')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('e5f1a391c5cd8caa15462f1f493a4630369ae8342616366f4c5f7187a5d0c9e8')
 
 build() {
-    cd "$pkgname"
-    export CGO_ENABLED=0
-    export GOFLAGS="-trimpath -mod=readonly -modcacherw"
+    cd "$pkgname-$pkgver"
+    export CGO_CPPFLAGS="${CPPFLAGS}"
+    export CGO_CFLAGS="${CFLAGS}"
+    export CGO_CXXFLAGS="${CXXFLAGS}"
+    export CGO_LDFLAGS="${LDFLAGS}"
+    export GOFLAGS="-buildmode=pie -trimpath -ldflags=-linkmode=external -mod=readonly -modcacherw"
     go build -o opensnitch-zenity ./cmd/opensnitch-zenity
 }
 
 check() {
-    cd "$pkgname"
+    cd "$pkgname-$pkgver"
     go test ./...
 }
 
 package() {
-    cd "$pkgname"
+    cd "$pkgname-$pkgver"
     install -Dm755 opensnitch-zenity "$pkgdir/usr/bin/opensnitch-zenity"
     install -Dm644 contrib/systemd/opensnitch-zenity.service \
         "$pkgdir/usr/lib/systemd/user/opensnitch-zenity.service"

@@ -1,5 +1,15 @@
 # opensnitch-zenity
 
+[![CI](https://github.com/vmartinv/opensnitch-zenity/actions/workflows/ci.yml/badge.svg)](https://github.com/vmartinv/opensnitch-zenity/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/vmartinv/opensnitch-zenity)](https://github.com/vmartinv/opensnitch-zenity/releases/latest)
+[![AUR](https://img.shields.io/aur/version/opensnitch-zenity)](https://aur.archlinux.org/packages/opensnitch-zenity)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+
+<p align="center">
+  <img src="docs/prompt.png" alt="Connection prompt: Deny once, Allow once, Deny always, Allow always" width="49%">
+  <img src="docs/scope.png" alt="Scope prompt after Allow always: this program to this host, this program to any host, any program to this host, Back" width="49%">
+</p>
+
 A small prompt UI for the [OpenSnitch](https://github.com/evilsocket/opensnitch)
 application firewall daemon. It replaces the Python/Qt `opensnitch-ui` with a
 single Go binary that asks about connections using
@@ -14,6 +24,17 @@ opensnitchd **1.7.2** on Arch Linux with Hyprland and zenity 4.2.
   statistics view, rule editor or firewall editor; edit rules as JSON in
   `/etc/opensnitchd/rules/` (the daemon reloads them on change).
 - Idle memory is about 20 MB RSS.
+
+### Compared with opensnitch-ui
+
+| | opensnitch-zenity | opensnitch-ui |
+|---|---|---|
+| Runtime | one static Go binary + zenity | Python 3 + PyQt + plugins |
+| Connection prompts | yes | yes |
+| Rule scopes from the prompt | program+host, program, host | many (path, command, user, port, IP, network, ...) |
+| Rule editor, statistics, firewall editor, tray icon | no; edit JSON in `/etc/opensnitchd/rules/` | yes |
+| Multiple nodes (remote daemons) | no | yes |
+| Good fit for | tiling WMs / Wayland setups that only want the prompt | desktops that want the full GUI |
 
 ## The prompt
 
@@ -51,7 +72,15 @@ repeated within 2 s reuses the previous answer instead of prompting again.
 
 ## Install
 
-On Arch Linux, build and install a package so pacman tracks the files:
+On Arch Linux, install [from the AUR](https://aur.archlinux.org/packages/opensnitch-zenity):
+
+```sh
+yay -S opensnitch-zenity     # or any AUR helper
+systemctl --user enable --now opensnitch-zenity.service
+sudo systemctl enable --now opensnitchd
+```
+
+Or build the same package from a clone:
 
 ```sh
 sudo pacman -S --needed opensnitch zenity go base-devel
@@ -62,8 +91,17 @@ systemctl --user enable --now opensnitch-zenity.service
 sudo systemctl enable --now opensnitchd
 ```
 
-Elsewhere, `make build && sudo make install` copies the binary to `/usr/bin`
-and the unit to `/usr/lib/systemd/user`.
+With Nix (flakes):
+
+```sh
+nix run github:vmartinv/opensnitch-zenity      # try it
+nix profile install github:vmartinv/opensnitch-zenity
+```
+
+Elsewhere, download a static binary for x86_64 or arm64 from
+[Releases](https://github.com/vmartinv/opensnitch-zenity/releases/latest)
+(it needs `zenity` on `PATH`), or run `make build && sudo make install`, which
+copies the binary to `/usr/bin` and the unit to `/usr/lib/systemd/user`.
 
 Do not run the stock `opensnitch-ui` at the same time: only one UI can listen
 on the socket. opensnitch-zenity refuses to start if another UI is already
