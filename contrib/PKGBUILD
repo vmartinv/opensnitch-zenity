@@ -8,7 +8,9 @@ url="https://github.com/vmartinv/opensnitch-zenity"
 license=('GPL-3.0-or-later')
 depends=('opensnitch' 'zenity')
 makedepends=('go')
-optdepends=('libnotify: notify_on_default desktop notifications')
+optdepends=('libnotify: notify_on_default desktop notifications'
+            'wl-clipboard: Copy details button on Wayland'
+            'xclip: Copy details button on X11')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('e5f1a391c5cd8caa15462f1f493a4630369ae8342616366f4c5f7187a5d0c9e8')
 

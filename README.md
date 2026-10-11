@@ -44,6 +44,7 @@ For each new connection the daemon asks about:
 |---|---|
 | **Allow once** / **Deny once** | Applies to this connection only. Closing the window = Deny once. |
 | **Allow always** / **Deny always** | A second dialog asks what the rule covers (see below). The daemon saves the rule to `/etc/opensnitchd/rules/`. |
+| **Copy details** | Copies the connection details as plain text (with `wl-copy`, or `xclip` on X11) and shows the dialog again. Ctrl+C does not work in zenity's dialog text; right-click → Copy does. |
 
 Rule scopes offered after "always", most specific first:
 

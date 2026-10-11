@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -34,6 +35,8 @@ type Prompter interface {
 type Zenity struct {
 	Path    string
 	Timeout time.Duration // for both dialogs together
+	// Copy puts text on the clipboard; nil means wl-copy or xclip.
+	Copy func(ctx context.Context, text string) error
 }
 
 // deadlineMargin keeps the last dialog inside the daemon's own deadline,
@@ -46,6 +49,7 @@ const (
 	btnAllowAlways = "Allow always"
 	btnDenyAlways  = "Deny always"
 	btnBack        = "Back"
+	btnCopy        = "Copy details"
 )
 
 func (z *Zenity) Prompt(ctx context.Context, conn *pb.Connection) (Choice, error) {
@@ -69,7 +73,7 @@ func (z *Zenity) ask(ctx context.Context, conn *pb.Connection, deadline time.Tim
 	if time.Until(deadline) <= 0 {
 		return Choice{}, false, ErrTimeout
 	}
-	pressed, err := z.run(ctx, decisionArgs(conn, time.Until(deadline)))
+	pressed, err := z.decide(ctx, conn, deadline)
 	if err != nil {
 		return Choice{}, false, err
 	}
@@ -116,6 +120,46 @@ func (z *Zenity) ask(ctx context.Context, conn *pb.Connection, deadline time.Tim
 		}
 	}
 	return Choice{}, false, fmt.Errorf("unexpected zenity answer %q", pressed)
+}
+
+// decide shows the decision dialog until a button other than Copy details
+// is pressed, reporting the copy result in the re-shown dialog.
+func (z *Zenity) decide(ctx context.Context, conn *pb.Connection, deadline time.Time) (string, error) {
+	note := ""
+	for {
+		pressed, err := z.run(ctx, decisionArgs(conn, note, time.Until(deadline)))
+		if err != nil || pressed != btnCopy {
+			return pressed, err
+		}
+		copyText := z.Copy
+		if copyText == nil {
+			copyText = copyToClipboard
+		}
+		note = "<i>Copied to clipboard.</i>"
+		if err := copyText(ctx, PlainText(conn)); err != nil {
+			note = "<i>Copy failed: " + html.EscapeString(err.Error()) + "</i>"
+		}
+		if time.Until(deadline) <= 0 {
+			return "", ErrTimeout
+		}
+	}
+}
+
+// copyToClipboard uses wl-copy on Wayland, else xclip. Both fork to keep
+// serving the clipboard after they return.
+func copyToClipboard(ctx context.Context, text string) error {
+	name, args := "xclip", []string{"-selection", "clipboard"}
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		name, args = "wl-copy", nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
 }
 
 // run shows a --question dialog and returns the label of the pressed button.
@@ -171,8 +215,14 @@ func newDialog(text string, timeout time.Duration, ok, cancel string, extra ...s
 }
 
 // Closing the window must be the safe answer, so Cancel is "Deny once".
-func decisionArgs(conn *pb.Connection, timeout time.Duration) dialog {
-	return newDialog(Text(conn), timeout, btnAllowOnce, btnDenyOnce, btnDenyAlways, btnAllowAlways)
+// Copy details is the last extra: rightmost in a row, topmost when stacked,
+// either way at the edge away from the answers.
+func decisionArgs(conn *pb.Connection, note string, timeout time.Duration) dialog {
+	text := Text(conn)
+	if note != "" {
+		text += "\n\n" + note
+	}
+	return newDialog(text, timeout, btnAllowOnce, btnDenyOnce, btnDenyAlways, btnAllowAlways, btnCopy)
 }
 
 type scopeOption struct {
@@ -228,6 +278,12 @@ func Text(conn *pb.Connection) string {
 		e(prog), dest, conn.DstPort, e(conn.Protocol),
 		e(truncate(strings.Join(conn.ProcessArgs, " "), 200)),
 		e(uname), conn.ProcessId)
+}
+
+// PlainText is Text without markup, for the clipboard. Text escapes every
+// field, so its only tags are the <b> it adds itself.
+func PlainText(conn *pb.Connection) string {
+	return html.UnescapeString(strings.NewReplacer("<b>", "", "</b>", "").Replace(Text(conn)))
 }
 
 // clean drops control characters, which could fake extra lines in labels.

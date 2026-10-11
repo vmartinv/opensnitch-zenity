@@ -40,6 +40,15 @@ func TestTextEscapesMarkup(t *testing.T) {
 	}
 }
 
+func TestPlainTextHasNoMarkup(t *testing.T) {
+	c := conn()
+	c.DstHost = "<b>a&b</b>"
+	want := "/usr/bin/curl wants to connect to\n<b>a&b</b> (93.184.216.34) port 443/tcp\n\nCommand: curl https://example.com\nUser: root (0)   PID: 42"
+	if got := PlainText(c); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestTextTruncatesArgsByRune(t *testing.T) {
 	c := conn()
 	c.ProcessArgs = []string{strings.Repeat("é", 500)}
@@ -49,10 +58,10 @@ func TestTextTruncatesArgsByRune(t *testing.T) {
 }
 
 func TestDecisionDialogClosingDenies(t *testing.T) {
-	d := decisionArgs(conn(), 30*time.Second)
+	d := decisionArgs(conn(), "", 30*time.Second)
 	args := strings.Join(d.args, "\n")
 	for _, want := range []string{"--question", "--timeout=30", "--cancel-label=Deny once", "--ok-label=Allow once",
-		"--extra-button=Allow always", "--extra-button=Deny always"} {
+		"--extra-button=Allow always", "--extra-button=Deny always", "--extra-button=Copy details"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args lack %q", want)
 		}
@@ -143,6 +152,38 @@ func TestPrompt(t *testing.T) {
 			log, _ := os.ReadFile(calls)
 			if n := strings.Count(string(log), "--question"); n != tt.dialogs {
 				t.Errorf("showed %d dialogs, want %d", n, tt.dialogs)
+			}
+		})
+	}
+}
+
+func TestPromptCopyDetails(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		copyErr error
+		note    string
+	}{
+		{"ok", nil, "Copied to clipboard."},
+		{"fails", errors.New("wl-copy: not found"), "Copy failed: wl-copy: not found"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path, calls := fakeZenity(t, press(btnCopy), pressOK)
+			var copied string
+			z := &Zenity{Path: path, Timeout: time.Second, Copy: func(_ context.Context, text string) error {
+				copied = text
+				return tt.copyErr
+			}}
+			got, err := z.Prompt(context.Background(), conn())
+			if want := (Choice{"allow", "once", rules.ScopeProgram}); err != nil || got != want {
+				t.Fatalf("got %v, %v; want %v", got, err, want)
+			}
+			if copied != PlainText(conn()) {
+				t.Errorf("copied %q", copied)
+			}
+			log, _ := os.ReadFile(calls)
+			if dialogs := strings.Split(strings.TrimSpace(string(log)), "\n--question"); len(dialogs) != 2 ||
+				strings.Contains(dialogs[0], tt.note) || !strings.Contains(dialogs[1], tt.note) {
+				t.Errorf("want 2 dialogs, the second noting %q:\n%s", tt.note, log)
 			}
 		})
 	}
