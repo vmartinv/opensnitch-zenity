@@ -6,7 +6,7 @@
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
-  <img src="docs/prompt.png" alt="Connection prompt: Deny once, Allow once, Deny always, Allow always" width="49%">
+  <img src="docs/prompt.png" alt="Connection prompt: Copy details, Allow always, Deny always, Allow once, Deny once" width="49%">
   <img src="docs/scope.png" alt="Scope prompt after Allow always: this program to this host, this program to any host, any program to this host, Back" width="49%">
 </p>
 
