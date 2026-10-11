@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -126,7 +127,9 @@ func TestPrompt(t *testing.T) {
 		{"allow always, any host", []string{press(btnAllowAlways), press(labelFor(opts, rules.ScopeProgram))}, Choice{"allow", "always", rules.ScopeProgram}, 2},
 		{"allow always, this host", []string{press(btnAllowAlways), press(labelFor(opts, rules.ScopeProgramHost))}, Choice{"allow", "always", rules.ScopeProgramHost}, 2},
 		{"deny always, any program (OK button)", []string{press(btnDenyAlways), pressOK}, Choice{"deny", "always", rules.ScopeHost}, 2},
-		{"always then just once", []string{press(btnDenyAlways), pressCancel}, Choice{"deny", "once", rules.ScopeProgram}, 2},
+		{"always, back, deny once", []string{press(btnDenyAlways), pressCancel, pressCancel}, Choice{"deny", "once", rules.ScopeProgram}, 3},
+		{"always, back, always again", []string{press(btnDenyAlways), pressCancel, press(btnAllowAlways), press(labelFor(opts, rules.ScopeProgramHost))},
+			Choice{"allow", "always", rules.ScopeProgramHost}, 4},
 		{"always then scope timeout", []string{press(btnAllowAlways), timeout}, Choice{"allow", "once", rules.ScopeProgram}, 2},
 	}
 	for _, tt := range tests {
@@ -180,5 +183,12 @@ func TestPromptErrors(t *testing.T) {
 	}
 	if _, err := (&Zenity{Path: "/nonexistent/zenity", Timeout: time.Second}).Prompt(context.Background(), conn()); err == nil {
 		t.Error("missing zenity should fail")
+	}
+}
+
+func TestScopeDialogEnterIsBack(t *testing.T) {
+	d := scopeArgs(conn(), "allow", scopeOptions(conn()), 30*time.Second)
+	if !slices.Contains(d.args, "--default-cancel") || d.cancel != btnBack {
+		t.Errorf("scope dialog default is not %q: %v", btnBack, d.args)
 	}
 }

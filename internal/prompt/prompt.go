@@ -33,23 +33,47 @@ type Prompter interface {
 // "always" answers, what the rule should cover.
 type Zenity struct {
 	Path    string
-	Timeout time.Duration // per dialog
+	Timeout time.Duration // for both dialogs together
 }
+
+// deadlineMargin keeps the last dialog inside the daemon's own deadline,
+// leaving time to kill zenity and send the answer.
+const deadlineMargin = 3 * time.Second
 
 const (
 	btnAllowOnce   = "Allow once"
 	btnDenyOnce    = "Deny once"
 	btnAllowAlways = "Allow always"
 	btnDenyAlways  = "Deny always"
-	btnJustOnce    = "Just once"
+	btnBack        = "Back"
 )
 
 func (z *Zenity) Prompt(ctx context.Context, conn *pb.Connection) (Choice, error) {
-	pressed, err := z.run(ctx, decisionArgs(conn, z.Timeout))
-	if err != nil {
-		return Choice{}, err
+	// One budget for both dialogs, so time left after the decision goes to
+	// the scope dialog instead of being cut short.
+	deadline := time.Now().Add(z.Timeout)
+	if d, ok := ctx.Deadline(); ok && d.Add(-deadlineMargin).Before(deadline) {
+		deadline = d.Add(-deadlineMargin)
 	}
-	c := Choice{Duration: rules.DurationOnce, Scope: rules.ScopeProgram}
+	for {
+		c, again, err := z.ask(ctx, conn, deadline)
+		if !again {
+			return c, err
+		}
+	}
+}
+
+// ask shows the decision dialog and, for "always", the scope dialog.
+// again is true when the user pressed Back in the scope dialog.
+func (z *Zenity) ask(ctx context.Context, conn *pb.Connection, deadline time.Time) (c Choice, again bool, err error) {
+	if time.Until(deadline) <= 0 {
+		return Choice{}, false, ErrTimeout
+	}
+	pressed, err := z.run(ctx, decisionArgs(conn, time.Until(deadline)))
+	if err != nil {
+		return Choice{}, false, err
+	}
+	c = Choice{Duration: rules.DurationOnce, Scope: rules.ScopeProgram}
 	if conn.ProcessPath == "" {
 		c.Scope = rules.ScopeHost
 	}
@@ -63,34 +87,41 @@ func (z *Zenity) Prompt(ctx context.Context, conn *pb.Connection) (Choice, error
 	case btnDenyAlways:
 		c.Action, c.Duration = rules.ActionDeny, rules.DurationAlways
 	default:
-		return Choice{}, fmt.Errorf("unexpected zenity answer %q", pressed)
+		return Choice{}, false, fmt.Errorf("unexpected zenity answer %q", pressed)
 	}
 	if c.Duration == rules.DurationOnce || conn.ProcessPath == "" {
-		return c, nil
+		return c, false, nil
 	}
 
+	// Running out of time here still applies the chosen action, once.
+	c.Duration = rules.DurationOnce
+	if time.Until(deadline) <= 0 {
+		return c, false, nil
+	}
 	opts := scopeOptions(conn)
-	pressed, err = z.run(ctx, scopeArgs(conn, c.Action, opts, z.Timeout))
-	if errors.Is(err, ErrTimeout) || pressed == btnJustOnce {
-		c.Duration = rules.DurationOnce
-		return c, nil
+	pressed, err = z.run(ctx, scopeArgs(conn, c.Action, opts, time.Until(deadline)))
+	if errors.Is(err, ErrTimeout) {
+		return c, false, nil
 	}
 	if err != nil {
-		return Choice{}, err
+		return Choice{}, false, err
+	}
+	if pressed == btnBack {
+		return Choice{}, true, nil
 	}
 	for _, o := range opts {
 		if o.label == pressed {
-			c.Scope = o.scope
-			return c, nil
+			c.Duration, c.Scope = rules.DurationAlways, o.scope
+			return c, false, nil
 		}
 	}
-	return Choice{}, fmt.Errorf("unexpected zenity answer %q", pressed)
+	return Choice{}, false, fmt.Errorf("unexpected zenity answer %q", pressed)
 }
 
 // run shows a --question dialog and returns the label of the pressed button.
 // OK is the first label, Cancel (also window close) the second.
 func (z *Zenity) run(ctx context.Context, d dialog) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, z.Timeout+2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, d.timeout+2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, z.Path, d.args...)
 	cmd.WaitDelay = time.Second
@@ -117,9 +148,12 @@ func (z *Zenity) run(ctx context.Context, d dialog) (string, error) {
 type dialog struct {
 	args       []string
 	ok, cancel string
+	timeout    time.Duration
 }
 
 func newDialog(text string, timeout time.Duration, ok, cancel string, extra ...string) dialog {
+	// zenity takes whole seconds and treats 0 as no timeout.
+	timeout = max(timeout.Round(time.Second), time.Second)
 	args := []string{
 		"--question",
 		"--title=OpenSnitch",
@@ -133,7 +167,7 @@ func newDialog(text string, timeout time.Duration, ok, cancel string, extra ...s
 	for _, e := range extra {
 		args = append(args, "--extra-button="+e)
 	}
-	return dialog{args: args, ok: ok, cancel: cancel}
+	return dialog{args: args, ok: ok, cancel: cancel, timeout: timeout}
 }
 
 // Closing the window must be the safe answer, so Cancel is "Deny once".
@@ -168,7 +202,10 @@ func scopeArgs(conn *pb.Connection, action string, opts []scopeOption, timeout t
 	for i := last - 1; i >= 0; i-- {
 		extra = append(extra, opts[i].label)
 	}
-	return newDialog(text, timeout, opts[last].label, btnJustOnce, extra...)
+	d := newDialog(text, timeout, opts[last].label, btnBack, extra...)
+	// Enter must not pick the broadest scope (OK), so it goes Back.
+	d.args = append(d.args, "--default-cancel")
+	return d
 }
 
 // Text renders the connection as Pango markup; every field is

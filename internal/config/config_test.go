@@ -70,7 +70,7 @@ func TestValidate(t *testing.T) {
 		"action":                      func(c *Config) { c.DefaultAction = "accept" },
 		"log level":                   func(c *Config) { c.LogLevel = "verbose" },
 		"timeout too low":             func(c *Config) { c.PromptTimeout = 0 },
-		"timeout beyond daemon limit": func(c *Config) { c.PromptTimeout = time.Minute },
+		"timeout beyond daemon limit": func(c *Config) { c.PromptTimeout = 2 * time.Minute },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

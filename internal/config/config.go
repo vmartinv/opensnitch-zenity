@@ -12,9 +12,9 @@ import (
 	"github.com/vmartinv/opensnitch-zenity/internal/rules"
 )
 
-// opensnitchd gives up on AskRule after 120s and an "always" answer shows
-// two dialogs, so each may take at most this long.
-const maxPromptTimeout = 55 * time.Second
+// opensnitchd gives up on AskRule after 120s; both dialogs share the
+// timeout, and the rest is margin for zenity start-up and the reply.
+const maxPromptTimeout = 110 * time.Second
 
 type Config struct {
 	Socket             string        `toml:"socket"`
@@ -29,7 +29,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Socket:        "unix:///tmp/osui.sock",
-		PromptTimeout: 30 * time.Second,
+		PromptTimeout: maxPromptTimeout,
 		DefaultAction: rules.ActionDeny,
 		LogLevel:      "info",
 		ZenityPath:    "zenity",

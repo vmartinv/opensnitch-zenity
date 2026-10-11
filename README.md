@@ -52,11 +52,13 @@ Rule scopes offered after "always", most specific first:
 | *curl to example.com only* | this program connecting to this host |
 | *curl to any host* | this program, any destination |
 | *Any program to example.com* | any program connecting to this host |
-| *Just once* | apply the chosen action to this connection only |
+| *Back* (also Enter, Esc, closing the window) | return to the first dialog |
 
-Each dialog waits `prompt_timeout` (default 30 s). If nobody answers the first
-dialog, `default_action` is applied **once**; if nobody answers the scope
-dialog, the chosen action is applied once.
+Both dialogs share `prompt_timeout` (default and maximum 110 s, just under the
+daemon's 120 s limit), so a quick first answer leaves the rest for the scope
+dialog. If nobody answers the first dialog, `default_action` is applied
+**once**; if nobody answers the scope dialog, the chosen action is applied
+once. Enter in the scope dialog means *Back*, never the broadest scope.
 
 No dialog is shown, and `default_action` is applied once, when:
 
@@ -113,7 +115,7 @@ listening.
 
 ```toml
 socket = "unix:///tmp/osui.sock"   # must match Server.Address in default-config.json
-prompt_timeout = "30s"             # per dialog, 1s..55s
+prompt_timeout = "110s"            # both dialogs together, 1s..110s
 default_action = "deny"            # deny | allow | reject, used when nobody answers
 notify_on_default = false          # notify-send when default_action is applied
 log_level = "info"                 # debug | info | warn | error
